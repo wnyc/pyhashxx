@@ -117,7 +117,32 @@ static PyObject *
 Hashxx_digest(HashxxObject* self)
 {
     unsigned int digest = XXH32_digest(self->xxhash_state);
+    if (digest < PyInt_GetMax())
+      return PyInt_FromLong(digest);
     return Py_BuildValue("I", digest);
+}
+
+static const char pyhashxx_hashxx_hex_lookup[] = "0123456789abcdef";
+PyObject *pyhashxx_hashxx_hex_builder(unsigned long long digest) {
+  char hex[8];
+  hex[0] = pyhashxx_hashxx_hex_lookup[digest & 0xf];
+  hex[1] = pyhashxx_hashxx_hex_lookup[(digest >> 4) & 0xf];
+  hex[2] = pyhashxx_hashxx_hex_lookup[(digest >> 8) & 0xf];
+  hex[3] = pyhashxx_hashxx_hex_lookup[(digest >> 12) & 0xf];
+  hex[4] = pyhashxx_hashxx_hex_lookup[(digest >> 16) & 0xf];
+  hex[5] = pyhashxx_hashxx_hex_lookup[(digest >> 20) & 0xf];
+  hex[6] = pyhashxx_hashxx_hex_lookup[(digest >> 24) & 0xf];
+  hex[7] = pyhashxx_hashxx_hex_lookup[(digest >> 28) & 0xf];
+
+  return PyString_FromStringAndSize(hex, 8);
+}
+
+static PyObject *
+Hashxx_hexdigest(HashxxObject* self)
+{
+  char hex[8];
+  unsigned int digest = XXH32_digest(self->xxhash_state);
+  return pyhashxx_hashxx_hex_builder(digest);
 }
 
 static PyMethodDef Hashxx_methods[] = {
@@ -127,8 +152,12 @@ static PyMethodDef Hashxx_methods[] = {
     {"digest", (PyCFunction)Hashxx_digest, METH_NOARGS,
      "Return the current digest value of the data processed so far."
     },
+    {"hexdigest", (PyCFunction)Hashxx_hexdigest, METH_NOARGS,
+     "Return the current digest value of the data processed so far as a hex string."},
     {NULL}  /* Sentinel */
 };
+
+
 
 
 
@@ -176,7 +205,8 @@ static PyTypeObject pyhashxx_HashxxType = {
 
 
 static PyObject *
-pyhashxx_hashxx(PyObject* self, PyObject *args, PyObject *kwds)
+pyhashxx_hashxx_(PyObject *(*build_value)(unsigned long long),
+		 PyObject* self, PyObject *args, PyObject *kwds)
 {
     unsigned int seed = 0;
     const char* err_msg = NULL;
@@ -243,8 +273,9 @@ pyhashxx_hashxx(PyObject* self, PyObject *args, PyObject *kwds)
             did_hash = 0;
         }
 
-        if (did_hash)
-            return Py_BuildValue("I", digest);
+        if (did_hash) {
+	  return build_value(digest);
+	}
     }
 
     // Otherwise, do it the long, slower way
@@ -256,7 +287,7 @@ pyhashxx_hashxx(PyObject* self, PyObject *args, PyObject *kwds)
     digest = XXH32_digest(state);
     XXH32_destroy(state);
 
-    return Py_BuildValue("I", digest);
+    return build_value(digest);
 
 badarg:
     PyErr_SetString(PyExc_TypeError, err_msg);
@@ -266,9 +297,32 @@ badseed:
     return NULL;
 }
 
+static PyObject *pyhashxx_hashxx_builder(unsigned long long digest) {
+  if (digest < PyInt_GetMax())
+    return PyInt_FromLong(digest);
+  
+  return Py_BuildValue("I", (unsigned int)(digest & 0xffffffff));
+}
+
+static PyObject *
+pyhashxx_hashxx(PyObject* self, PyObject *args, PyObject *kwds)
+{
+  return pyhashxx_hashxx_(pyhashxx_hashxx_builder, self, args, kwds);
+}
+
+
+static PyObject *
+pyhashxx_hashxx_hex(PyObject* self, PyObject *args, PyObject *kwds)
+{
+  return pyhashxx_hashxx_(pyhashxx_hashxx_hex_builder, self, args, kwds);
+}
+
 static PyMethodDef pyhashxx_methods[] = {
     {"hashxx", (PyCFunction)pyhashxx_hashxx, METH_VARARGS | METH_KEYWORDS,
      "Compute the xxHash value for the given value, optionally providing a seed."
+    },
+    {"hashxx_hex", (PyCFunction)pyhashxx_hashxx_hex, METH_VARARGS | METH_KEYWORDS,
+     "Compute the xxHash value as a hexdigest for the given value, optionally providing a seed."
     },
     {NULL}  /* Sentinel */
 };
