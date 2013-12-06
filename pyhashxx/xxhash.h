@@ -88,6 +88,22 @@ XXH32() :
 	If your data is larger, use the advanced functions below.
 */
 
+#if defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L   // C99
+# include <stdint.h>
+  uint64_t XXH64 (const void* input, int len, uint64_t seed);
+#else
+  unsigned long long  XXH64 (const void* input, int len, unsigned long long seed);
+#endif
+
+
+/*
+XXH64() :
+	Calculate the 64-bits hash of sequence of length "len" stored at memory address "input".
+    The memory between input & input+len must be valid (allocated and read-accessible).
+	"seed" can be used to alter the result predictably.
+
+*/
+
 
 
 //****************************

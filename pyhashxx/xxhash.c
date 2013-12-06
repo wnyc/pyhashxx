@@ -99,7 +99,7 @@ You can contact the author at :
   typedef uint16_t U16;
   typedef uint32_t U32;
   typedef  int32_t S32;
-  typedef uint64_t U64;
+  typedef uint64_t  U64;
 #else
   typedef unsigned char       BYTE;
   typedef unsigned short      U16;
@@ -120,6 +120,8 @@ You can contact the author at :
 #else
 #  define XXH_rotl32(x,r) ((x << r) | (x >> (32 - r)))
 #endif
+#  define XXH_rotl64(x,r) ((x << r) | (x >> (64 - r)))
+
 
 #if defined(_MSC_VER)     // Visual Studio
 #  define XXH_swap32 _byteswap_ulong
@@ -143,12 +145,18 @@ static inline U32 XXH_swap32 (U32 x) {
 #define PRIME32_4    668265263U
 #define PRIME32_5    374761393U
 
+#define PRIME64_1   7046029209275649221ULL // Next miller_rabin probable prime beyond PRIME32_1 **2 
+#define PRIME64_2   5048211431885505379ULL // Ditto ...
+#define PRIME64_3   10669956377862667027ULL
+#define PRIME64_4   446578461732459209ULL
+#define PRIME64_5   140446101683300563ULL
+
 
 //**************************************
 // Macros
 //**************************************
 #define XXH_LE32(p)  (XXH_BIG_ENDIAN ? XXH_swap32(*(U32*)(p)) : *(U32*)(p))
-
+#define XXH_LE64(p)  *(U32*)(p)
 
 
 //****************************
@@ -222,6 +230,70 @@ U32 XXH32(const void* input, int len, U32 seed)
     return h32;
 
 #endif
+}
+
+//********************************
+// Simple Hash Functions 64 bit
+//********************************
+
+U64 XXH64(const void* input, int len, U64 seed)
+{
+
+    const BYTE* p = (const BYTE*)input;
+    const BYTE* const bEnd = p + len;
+    U64 h64;
+
+#ifdef XXH_ACCEPT_NULL_INPUT_POINTER
+    if (p==NULL) { len=0; p=(const BYTE*)16; }
+#endif
+
+    if (len>=16)
+    {
+        const BYTE* const limit = bEnd - 16;
+        U64 v1 = seed + PRIME64_1 + PRIME64_2;
+        U64 v2 = seed + PRIME64_2;
+        U64 v3 = seed + 0;
+        U64 v4 = seed - PRIME64_1;
+
+        do
+        {
+            v1 += XXH_LE64(p) * PRIME64_2; v1 = XXH_rotl64(v1, 26); v1 *= PRIME64_1; p+=4;
+            v2 += XXH_LE64(p) * PRIME64_2; v2 = XXH_rotl64(v2, 26); v2 *= PRIME64_1; p+=4;
+            v3 += XXH_LE64(p) * PRIME64_2; v3 = XXH_rotl64(v3, 26); v3 *= PRIME64_1; p+=4;
+            v4 += XXH_LE64(p) * PRIME64_2; v4 = XXH_rotl64(v4, 26); v4 *= PRIME64_1; p+=4;
+        } while (p<=limit);
+
+        h64 = XXH_rotl64(v1, 1) + XXH_rotl64(v2, 14) + XXH_rotl64(v3, 24) + XXH_rotl64(v4, 36);
+    }
+    else
+    {
+        h64  = seed + PRIME64_5;
+    }
+
+    h64 += (U64) len;
+
+    while (p<=bEnd-4)
+    {
+        h64 += XXH_LE64(p) * PRIME64_3;
+        h64 = XXH_rotl64(h64, 34) * PRIME64_4 ;
+        p+=4;
+    }
+
+    while (p<bEnd)
+    {
+        h64 += (*p) * PRIME64_5;
+        h64 = XXH_rotl64(h64, 42) * PRIME64_1 ;
+        p++;
+    }
+
+    h64 ^= h64 >> 31;
+    h64 *= PRIME64_2;
+    h64 ^= h64 >> 29;
+    h64 *= PRIME64_3;
+    h64 ^= h64 >> 32;
+
+    return h64;
+
 }
 
 

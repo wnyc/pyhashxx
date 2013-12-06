@@ -174,9 +174,8 @@ static PyTypeObject pyhashxx_HashxxType = {
 };
 
 
-
 static PyObject *
-pyhashxx_hashxx(PyObject* self, PyObject *args, PyObject *kwds)
+pyhashxx_hashxx_(int use_64, PyObject *(*build_value)(unsigned long long), PyObject* self, PyObject *args, PyObject *kwds)
 {
     unsigned int seed = 0;
     const char* err_msg = NULL;
@@ -216,7 +215,7 @@ pyhashxx_hashxx(PyObject* self, PyObject *args, PyObject *kwds)
         goto badarg;
     }
 
-    unsigned int digest = 0;
+    unsigned long long digest = 0;
     // If possible, use the shorter, faster version that elides
     // allocating the state variable because it knows there is only
     // one input.
@@ -225,26 +224,38 @@ pyhashxx_hashxx(PyObject* self, PyObject *args, PyObject *kwds)
         int did_hash = 1;
 #if PY_MAJOR_VERSION >= 3
         if (PyBytes_Check(hash_obj)) {
-            digest = XXH32(PyBytes_AsString(hash_obj), PyBytes_Size(hash_obj), seed);
+	  if (use_64)
+            digest = XXH64(PyBytes_AsString(hash_obj), PyBytes_Size(hash_obj), seed);
+	  else
+            digest = XXH32(PyBytes_AsString(hash_obj), PyBytes_Size(hash_obj), (unsigned int)(seed & 0xffffffff));
         }
 #else
         if (PyString_Check(hash_obj)) {
-            digest = XXH32(PyString_AsString(hash_obj), PyString_Size(hash_obj), seed);
+	  if (use_64)
+            digest = XXH64(PyString_AsString(hash_obj), PyString_Size(hash_obj), seed);
+	  else
+            digest = XXH32(PyString_AsString(hash_obj), PyString_Size(hash_obj), (unsigned int)(seed & 0xffffffff));
         }
 #endif
         else if (PyByteArray_Check(hash_obj)) {
-            digest = XXH32(PyByteArray_AsString(hash_obj), PyByteArray_Size(hash_obj), seed);
+	  if (use_64)
+            digest = XXH64(PyByteArray_AsString(hash_obj), PyByteArray_Size(hash_obj), seed);
+	  else
+            digest = XXH32(PyByteArray_AsString(hash_obj), PyByteArray_Size(hash_obj), (unsigned int)(seed & 0xffffffff));
         }
         else if (hash_obj == Py_None) {
             // Nothing to hash
-            digest = XXH32("", 0, seed);
+	  if (use_64)
+            digest = XXH64("", 0, seed);
+	  else
+            digest = XXH32("", 0, (unsigned int)(seed & 0xffffffff));
         }
         else {
             did_hash = 0;
         }
 
         if (did_hash)
-            return Py_BuildValue("I", digest);
+	  return build_value(digest);
     }
 
     // Otherwise, do it the long, slower way
@@ -266,9 +277,87 @@ badseed:
     return NULL;
 }
 
+
+PyObject *pyhashxx_hashxx_builder(unsigned long long digest) {
+  return Py_BuildValue("I", (unsigned int)(digest & 0xffffffff));
+}
+
+PyObject *pyhashxx_hashxxx_builder(unsigned long long digest) {
+  return Py_BuildValue("K", digest);
+}
+
+static PyObject *
+pyhashxx_hashxx(PyObject* self, PyObject *args, PyObject *kwds)
+{
+  return pyhashxx_hashxx_(0, pyhashxx_hashxx_builder, self, args, kwds);
+}
+
+static PyObject *
+pyhashxx_hashxxx(PyObject* self, PyObject *args, PyObject *kwds)
+{
+  return pyhashxx_hashxx_(1, pyhashxx_hashxxx_builder, self, args, kwds);
+}
+
+char pyhashxx_hashxx_hex_lookup[] = "0123456789abcdef";
+PyObject *pyhashxx_hashxx_hex_builder(unsigned long long digest) {
+  char hex[8];
+  hex[0] = pyhashxx_hashxx_hex_lookup[digest & 0xf];
+  hex[1] = pyhashxx_hashxx_hex_lookup[(digest >> 4) & 0xf];
+  hex[2] = pyhashxx_hashxx_hex_lookup[(digest >> 8) & 0xf];
+  hex[3] = pyhashxx_hashxx_hex_lookup[(digest >> 12) & 0xf];
+  hex[4] = pyhashxx_hashxx_hex_lookup[(digest >> 16) & 0xf];
+  hex[5] = pyhashxx_hashxx_hex_lookup[(digest >> 20) & 0xf];
+  hex[6] = pyhashxx_hashxx_hex_lookup[(digest >> 24) & 0xf];
+  hex[7] = pyhashxx_hashxx_hex_lookup[(digest >> 28) & 0xf];
+
+  return PyString_FromStringAndSize(hex, 8);
+}
+PyObject *pyhashxx_hashxxx_hex_builder(unsigned long long  digest) {
+  char hex[16];
+  hex[0] = pyhashxx_hashxx_hex_lookup[digest & 0xf];
+  hex[1] = pyhashxx_hashxx_hex_lookup[(digest >> 4) & 0xf];
+  hex[2] = pyhashxx_hashxx_hex_lookup[(digest >> 8) & 0xf];
+  hex[3] = pyhashxx_hashxx_hex_lookup[(digest >> 12) & 0xf];
+  hex[4] = pyhashxx_hashxx_hex_lookup[(digest >> 16) & 0xf];
+  hex[5] = pyhashxx_hashxx_hex_lookup[(digest >> 20) & 0xf];
+  hex[6] = pyhashxx_hashxx_hex_lookup[(digest >> 24) & 0xf];
+  hex[7] = pyhashxx_hashxx_hex_lookup[(digest >> 28) & 0xf];
+  hex[8] = pyhashxx_hashxx_hex_lookup[(digest >> 32) & 0xf];
+  hex[9] = pyhashxx_hashxx_hex_lookup[(digest >> 36) & 0xf];
+  hex[10] = pyhashxx_hashxx_hex_lookup[(digest >> 40) & 0xf];
+  hex[11] = pyhashxx_hashxx_hex_lookup[(digest >> 44) & 0xf];
+  hex[12] = pyhashxx_hashxx_hex_lookup[(digest >> 48) & 0xf];
+  hex[13] = pyhashxx_hashxx_hex_lookup[(digest >> 52) & 0xf];
+  hex[14] = pyhashxx_hashxx_hex_lookup[(digest >> 56) & 0xf];
+  hex[15] = pyhashxx_hashxx_hex_lookup[(digest >> 60) & 0xf];
+
+  return PyString_FromStringAndSize(hex, 16);
+}
+
+static PyObject *
+pyhashxx_hashxx_hex(PyObject* self, PyObject *args, PyObject *kwds)
+{
+  return pyhashxx_hashxx_(0, pyhashxx_hashxx_hex_builder, self, args, kwds);
+}
+static PyObject *
+pyhashxx_hashxxx_hex(PyObject* self, PyObject *args, PyObject *kwds)
+{
+  return pyhashxx_hashxx_(1, pyhashxx_hashxxx_hex_builder, self, args, kwds);
+}
+
+
 static PyMethodDef pyhashxx_methods[] = {
     {"hashxx", (PyCFunction)pyhashxx_hashxx, METH_VARARGS | METH_KEYWORDS,
      "Compute the xxHash value for the given value, optionally providing a seed."
+    },
+    {"hashxxx", (PyCFunction)pyhashxx_hashxxx, METH_VARARGS | METH_KEYWORDS,
+     "Compute the xxHash value for the given value, optionally providing a seed."
+    },
+    {"hashxx_hex", (PyCFunction)pyhashxx_hashxx_hex, METH_VARARGS | METH_KEYWORDS,
+     "Compute the xxHash value as a hexdigest for the given value, optionally providing a seed."
+    },
+    {"hashxxx_hex", (PyCFunction)pyhashxx_hashxxx_hex, METH_VARARGS | METH_KEYWORDS,
+     "Compute the xxHash value as a hexdigest for the given value, optionally providing a seed."
     },
     {NULL}  /* Sentinel */
 };
